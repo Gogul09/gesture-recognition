@@ -9,7 +9,7 @@ bg = None
 #-------------------------------------------------------------------------------
 # Function - To find the running average over the background
 #-------------------------------------------------------------------------------
-def run_avg(image, accumWeight):
+def run_avg(image, aWeight):
 	global bg
 	# initialize the background
 	if bg is None:
@@ -17,7 +17,7 @@ def run_avg(image, accumWeight):
 		return
 
 	# compute weighted average, accumulate it and update the background
-	cv2.accumulateWeighted(image, bg, accumWeight)
+	cv2.accumulateWeighted(image, bg, aWeight)
 
 #-------------------------------------------------------------------------------
 # Function - To segment the region of hand in the image
@@ -28,15 +28,10 @@ def segment(image, threshold=25):
 	diff = cv2.absdiff(bg.astype("uint8"), image)
 
 	# threshold the diff image so that we get the foreground
-	thresholded = cv2.threshold(diff,
-								threshold,
-								255,
-								cv2.THRESH_BINARY)[1]
+	thresholded = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)[1]
 
 	# get the contours in the thresholded image
-	(_, cnts, _) = cv2.findContours(thresholded.copy(),
-									cv2.RETR_EXTERNAL,
-									cv2.CHAIN_APPROX_SIMPLE)
+	(_, cnts, _) = cv2.findContours(thresholded.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
 	# return None, if no contours detected
 	if len(cnts) == 0:
@@ -51,8 +46,8 @@ def segment(image, threshold=25):
 # Main function
 #-------------------------------------------------------------------------------
 if __name__ == "__main__":
-	# initialize accumulated weight
-	accumWeight = 0.5
+	# initialize weight for running average
+	aWeight = 0.5
 
 	# get the reference to the webcam
 	camera = cv2.VideoCapture(0)
@@ -88,9 +83,9 @@ if __name__ == "__main__":
 		gray = cv2.GaussianBlur(gray, (7, 7), 0)
 
 		# to get the background, keep looking till a threshold is reached
-		# so that our weighted average model gets calibrated
+		# so that our running average model gets calibrated
 		if num_frames < 30:
-			run_avg(gray, accumWeight)
+			run_avg(gray, aWeight)
 		else:
 			# segment the hand region
 			hand = segment(gray)
