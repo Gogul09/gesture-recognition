@@ -15,14 +15,9 @@ def segment(image, threshold=25):
     global bg
     diff = cv2.absdiff(bg.astype("uint8"), image)
 
-    thresholded = cv2.threshold(diff,
-                                threshold,
-                                255,
-                                cv2.THRESH_BINARY)[1]
+    thresholded = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)[1]
 
-    (_, cnts, _) = cv2.findContours(thresholded.copy(),
-                                    cv2.RETR_EXTERNAL,
-                                    cv2.CHAIN_APPROX_SIMPLE)
+    (_, cnts, _) = cv2.findContours(thresholded.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     if len(cnts) == 0:
         return
@@ -57,6 +52,8 @@ while(cap.isOpened()):
             (thresholded, segmented) = hand
             cv2.drawContours(clone, [segmented + (right, top)], -1, (0, 0, 255))
             cv2.imshow("Thesholded", thresholded)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
             
     cv2.rectangle(clone, (left, top), (right, bottom), (0,255,0), 2)
     num_frames += 1
