@@ -1,12 +1,22 @@
-#------------------------------------------------------------
-# SEGMENT, RECOGNIZE and COUNT fingers from a single frame
-#------------------------------------------------------------
-
-# organize imports
 import cv2
 import imutils
 import numpy as np
 from sklearn.metrics import pairwise
+
+# Constants for frame dimensions
+FRAME_WIDTH = 640
+FRAME_HEIGHT = 480
+
+# Minimum contour area to consider as a finger
+MIN_CONTOUR_AREA = 1000
+
+# Initialize camera
+cap = cv2.VideoCapture(0)
+cap.set(3, FRAME_WIDTH)
+cap.set(4, FRAME_HEIGHT)
+
+# Create a window to display the camera feed
+cv2.namedWindow("Finger Counting", cv2.WINDOW_NORMAL)
 
 #---------------------------------------------
 # To segment the region of hand in the image
@@ -90,41 +100,63 @@ def count(image, thresholded, segmented):
 
     return count
 
-#-----------------
-# MAIN FUNCTION
-#-----------------
-if __name__ == "__main__":
-    # get the current frame
-    frame = cv2.imread("resources/hand-sample.jpg")
+# Initialize variables
+prev_finger_count = 0
 
-    # resize the frame
-    frame = imutils.resize(frame, width=700)
+while True:
+    ret, frame = cap.read()
+    frame = cv2.flip(frame, 1)  # Flip the frame horizontally
 
-    # clone the frame
-    clone = frame.copy()
-
-    # get the height and width of the frame
-    (height, width) = frame.shape[:2]
-
-    # convert the frame to grayscale and blur it
+    # Convert the frame to grayscale
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (7, 7), 0)
 
-    # segment the hand region
-    hand = segment(clone, gray)
+    # Apply Gaussian blur to the frame
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # check whether hand region is segmented
-    if hand is not None:
-        # if yes, unpack the thresholded image and segmented contour
-        (thresholded, segmented) = hand
+    # Threshold the frame to create a binary image
+    _, thresholded = cv2.threshold(blurred, 100, 255, cv2.THRESH_BINARY)
 
-        # count the number of fingers
-        fingers = count(clone, thresholded, segmented)
+    # Find contours in the binary image
+    contours, _ = cv2.findContours(thresholded.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        cv2.putText(clone, "This is " + str(fingers), (70, 45), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
-        
-    # display the frame with segmented hand
-    cv2.imshow("Image", clone)
+    finger_count = 0
 
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    for contour in contours:
+        # Ignore small contours
+        if cv2.contourArea(contour) > MIN_CONTOUR_AREA:
+            hull = cv2.convexHull(contour, returnPoints=False)
+            defects = cv2.convexityDefects(contour, hull)
+
+            if defects is not None:
+                for i in range(defects.shape[0]):
+                    s, e, f, _ = defects[i, 0]
+                    start = tuple(contour[s][0])
+                    end = tuple(contour[e][0])
+                    far = tuple(contour[f][0])
+
+                    # Calculate the lengths of sides of the triangle
+                    a = np.sqrt((end[0] - start[0])**2 + (end[1] - start[1])**2)
+                    b = np.sqrt((far[0] - start[0])**2 + (far[1] - start[1])**2)
+                    c = np.sqrt((end[0] - far[0])**2 + (end[1] - far[1])**2)
+
+                    # Calculate the angle using the cosine rule
+                    angle = np.arccos((a**2 + b**2 - c**2) / (2 * a * b))
+
+                    # If the angle is less than 90 degrees, it's a finger
+                    if angle < np.pi / 2:
+                        finger_count += 1
+                        cv2.circle(frame, far, 5, [0, 0, 255], -1)
+
+    # Display the finger count on the frame
+    cv2.putText(frame, f"Finger Count: {finger_count}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+    # Show the processed frame
+    cv2.imshow("Finger Counting", frame)
+
+    # Check for the 'q' key to quit
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# Release the camera and close all windows
+cap.release()
+cv2.destroyAllWindows()
