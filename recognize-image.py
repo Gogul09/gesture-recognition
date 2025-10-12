@@ -12,27 +12,25 @@ from sklearn.metrics import pairwise
 # To segment the region of hand in the image
 #---------------------------------------------
 def segment(image, grayimage, threshold=75):
-    # threshold the image to get the foreground which is the hand
+    # threshold the image to get the foreground (hand)
     thresholded = cv2.threshold(grayimage, threshold, 255, cv2.THRESH_BINARY)[1]
 
-    # get the contours in the thresholded image
-    (_, cnts, _) = cv2.findContours(thresholded.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # get the contours in the thresholded image (OpenCV 4.x style)
+    cnts, _ = cv2.findContours(thresholded.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # return None, if no contours detected
+    # return None if no contours detected
     if len(cnts) == 0:
-        return
-    else:     
-        # based on contour area, get the maximum contour which is the hand
+        return None
+    else:
+        # based on contour area, get the maximum contour (the hand)
         segmented = max(cnts, key=cv2.contourArea)
-        
         return (thresholded, segmented)
 
 #--------------------------------------------------------------
 # To count the number of fingers in the segmented hand region
 #--------------------------------------------------------------
 def count(image, thresholded, segmented):
-    # find the convex hull of the segmented hand region
-    # which is the maximum contour with respect to area
+    # convex hull of the segmented hand region
     chull = cv2.convexHull(segmented)
 
     # find the most extreme points in the convex hull
@@ -41,60 +39,52 @@ def count(image, thresholded, segmented):
     extreme_left   = tuple(chull[chull[:, :, 0].argmin()][0])
     extreme_right  = tuple(chull[chull[:, :, 0].argmax()][0])
 
-    # find the center of the palm
+    # center of the palm
     cX = int((extreme_left[0] + extreme_right[0]) / 2)
     cY = int((extreme_top[1] + extreme_bottom[1]) / 2)
 
-    # find the maximum euclidean distance between the center of the palm
-    # and the most extreme points of the convex hull
-    distances = pairwise.euclidean_distances([(cX, cY)], Y=[extreme_left, extreme_right, extreme_top, extreme_bottom])[0]
+    # maximum euclidean distance from center to extreme points
+    distances = pairwise.euclidean_distances(
+        [(cX, cY)], 
+        Y=[extreme_left, extreme_right, extreme_top, extreme_bottom]
+    )[0]
     max_distance = distances[distances.argmax()]
 
-    # calculate the radius of the circle with 80% of the max euclidean distance obtained
+    # radius of circular ROI (80% of max distance)
     radius = int(0.8 * max_distance)
 
-    # find the circumference of the circle
+    # circumference of circular ROI
     circumference = (2 * np.pi * radius)
 
-    # initialize circular_roi with same shape as thresholded image
+    # circular ROI mask
     circular_roi = np.zeros(thresholded.shape[:2], dtype="uint8")
-
-    # draw the circular ROI with radius and center point of convex hull calculated above
     cv2.circle(circular_roi, (cX, cY), radius, 255, 1)
 
-    # take bit-wise AND between thresholded hand using the circular ROI as the mask
-    # which gives the cuts obtained using mask on the thresholded hand image
+    # apply circular ROI on thresholded hand
     circular_roi = cv2.bitwise_and(thresholded, thresholded, mask=circular_roi)
 
-    # compute the contours in the circular ROI
-    (_, cnts, _) = cv2.findContours(circular_roi.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    # find contours in circular ROI (OpenCV 4.x style)
+    cnts, hierarchy = cv2.findContours(circular_roi.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-    count = 0
-    # approach 1 - eliminating wrist
-    #cntsSorted = sorted(cnts, key=lambda x: cv2.contourArea(x))
-    #print(len(cntsSorted[1:])) # gives the count of fingers
+    count_fingers = 0
 
-    # approach 2 - eliminating wrist
-    # loop through the contours found
-    for i, c in enumerate(cnts):
-
-        # compute the bounding box of the contour
+    # loop through contours
+    for c in cnts:
         (x, y, w, h) = cv2.boundingRect(c)
 
-        # increment the count of fingers only if -
-        # 1. The contour region is not the wrist (bottom area)
-        # 2. The number of points along the contour does not exceed
-        #     25% of the circumference of the circular ROI
+        # count finger only if:
+        # 1. Not the wrist
+        # 2. Small enough relative to circumference
         if ((cY + (cY * 0.25)) > (y + h)) and ((circumference * 0.25) > c.shape[0]):
-            count += 1
+            count_fingers += 1
 
-    return count
+    return count_fingers
 
 #-----------------
 # MAIN FUNCTION
 #-----------------
 if __name__ == "__main__":
-    # get the current frame
+    # load a hand image
     frame = cv2.imread("resources/hand-sample.jpg")
 
     # resize the frame
@@ -103,28 +93,24 @@ if __name__ == "__main__":
     # clone the frame
     clone = frame.copy()
 
-    # get the height and width of the frame
-    (height, width) = frame.shape[:2]
-
-    # convert the frame to grayscale and blur it
+    # convert to grayscale and blur
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (7, 7), 0)
 
     # segment the hand region
     hand = segment(clone, gray)
 
-    # check whether hand region is segmented
     if hand is not None:
-        # if yes, unpack the thresholded image and segmented contour
         (thresholded, segmented) = hand
 
-        # count the number of fingers
+        # count fingers
         fingers = count(clone, thresholded, segmented)
 
-        cv2.putText(clone, "This is " + str(fingers), (70, 45), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
-        
-    # display the frame with segmented hand
-    cv2.imshow("Image", clone)
+        # display result
+        cv2.putText(clone, f"This is {fingers}", (70, 45), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
 
+    # show output
+    cv2.imshow("Image", clone)
     cv2.waitKey(0)
     cv2.destroyAllWindows()

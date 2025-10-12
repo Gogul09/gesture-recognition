@@ -34,8 +34,10 @@ def segment(image, threshold=25):
     # threshold the diff image so that we get the foreground
     thresholded = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)[1]
 
-    # get the contours in the thresholded image
-    (_, cnts, _) = cv2.findContours(thresholded.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # ✅ OpenCV 4.x style
+    cnts, _ = cv2.findContours(
+        thresholded.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
 
     # return None, if no contours detected
     if len(cnts) == 0:
@@ -75,9 +77,6 @@ if __name__ == "__main__":
         # clone the frame
         clone = frame.copy()
 
-        # get the height and width of the frame
-        (height, width) = frame.shape[:2]
-
         # get the ROI
         roi = frame[top:bottom, right:left]
 
@@ -95,15 +94,14 @@ if __name__ == "__main__":
 
             # check whether hand region is segmented
             if hand is not None:
-                # if yes, unpack the thresholded image and
-                # segmented region
+                # if yes, unpack the thresholded image and segmented region
                 (thresholded, segmented) = hand
 
                 # draw the segmented region and display the frame
                 cv2.drawContours(clone, [segmented + (right, top)], -1, (0, 0, 255))
-                cv2.imshow("Thesholded", thresholded)
+                cv2.imshow("Thresholded", thresholded)
 
-        # draw the segmented hand
+        # draw the segmented hand ROI box
         cv2.rectangle(clone, (left, top), (right, bottom), (0,255,0), 2)
 
         # increment the number of frames
@@ -122,3 +120,4 @@ if __name__ == "__main__":
 # free up memory
 camera.release()
 cv2.destroyAllWindows()
+
